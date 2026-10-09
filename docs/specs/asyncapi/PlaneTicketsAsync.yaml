@@ -1,0 +1,409 @@
+asyncapi: 3.0.0
+info:
+  title: Асинхронный API сервиса авиабилетов
+  version: 1.0.0
+  description: |
+    Асинхронный интерфейс сервиса авиабилетов.
+
+    Бронирование и отмена бронирования выполняются
+    асинхронно через Kafka.
+
+    Каждая команда содержит compositeBookingId -
+    идентификатор составного бронирования, созданный
+    оркестратором. Этот идентификатор возвращается
+    и в ответном событии и позволяет оркестратору
+    связать ответ с исходным бронированием для
+    компенасционных ивентов и прочего.
+servers:
+  kafka:
+    host: localhost:9092
+    protocol: kafka
+    description: "Kafka-брокер, ip случайный, потом решим с реальным."
+channels:
+  ticket.reserve:
+    address: ticket.reserve
+    messages:
+      reserveTicket:
+        name: ReserveTicket
+        title: Команда на бронирование авиабилета
+        payload:
+          type: object
+          description: |
+            Команда на выполнение операции с бронированием
+            авиабилета.
+          required:
+          - compositeBookingId
+          - ticketId
+          properties:
+            compositeBookingId:
+              type: integer
+              format: int64
+              description: |
+                Уникальный идентификатор составного бронирования,
+                созданный оркестратором путешествий.
+              example: 123312
+            ticketId:
+              type: integer
+              format: int64
+              description: |
+                Уникальный идентификатор авиабилета,
+                над которым выполняется операция.
+              example: 12345
+  ticket.cancel:
+    address: ticket.cancel
+    messages:
+      cancelTicket:
+        name: CancelTicket
+        title: Команда на отмену бронирования авиабилета
+        payload:
+          type: object
+          description: |
+            Команда на выполнение операции с бронированием
+            авиабилета.
+          required:
+          - compositeBookingId
+          - ticketId
+          properties:
+            compositeBookingId:
+              type: integer
+              format: int64
+              description: |
+                Уникальный идентификатор составного бронирования,
+                созданный оркестратором путешествий.
+              example: 123312
+            ticketId:
+              type: integer
+              format: int64
+              description: |
+                Уникальный идентификатор авиабилета,
+                над которым выполняется операция.
+              example: 12345
+  ticket.reservation-status:
+    address: ticket.reservation-status
+    messages:
+      reservationStatusChanged:
+        name: ReservationStatusChanged
+        title: Результат изменения статуса бронирования
+        payload:
+          type: object
+          description: |
+            Событие с результатом обработки операции
+            бронирования авиабилета.
+
+            compositeBookingId соответствует идентификатору,
+            переданному в исходной команде.
+          required:
+          - compositeBookingId
+          - ticketId
+          - status
+          properties:
+            compositeBookingId:
+              type: integer
+              format: int64
+              description: |
+                Идентификатор составного бронирования,
+                к которому относится событие.
+              example: 12431243
+            ticketId:
+              type: integer
+              format: int64
+              description: |
+                Идентификатор авиабилета.
+              example: 12345
+            status:
+              type: string
+              description: |
+                Новый статус бронирования авиабилета.
+              enum:
+              - AVAILABLE
+              - RESERVATION_PENDING
+              - RESERVED
+              - CANCELLATION_PENDING
+              - CANCELLED
+              example: RESERVED
+operations:
+  reserveTicket:
+    action: receive
+    channel:
+      address: ticket.reserve
+      messages:
+        reserveTicket:
+          name: ReserveTicket
+          title: Команда на бронирование авиабилета
+          payload:
+            type: object
+            description: |
+              Команда на выполнение операции с бронированием
+              авиабилета.
+            required:
+            - compositeBookingId
+            - ticketId
+            properties:
+              compositeBookingId:
+                type: integer
+                format: int64
+                description: |
+                  Уникальный идентификатор составного бронирования,
+                  созданный оркестратором путешествий.
+                example: 123312
+              ticketId:
+                type: integer
+                format: int64
+                description: |
+                  Уникальный идентификатор авиабилета,
+                  над которым выполняется операция.
+                example: 12345
+    summary: Бронирование авиабилета
+    description: |
+      Получает команду на бронирование авиабилета.
+
+      compositeBookingId позволяет связать бронирование
+      авиабилета с составным бронированием путешествия,
+      создаваемым оркестратором.
+  cancelTicket:
+    action: receive
+    channel:
+      address: ticket.cancel
+      messages:
+        cancelTicket:
+          name: CancelTicket
+          title: Команда на отмену бронирования авиабилета
+          payload:
+            type: object
+            description: |
+              Команда на выполнение операции с бронированием
+              авиабилета.
+            required:
+            - compositeBookingId
+            - ticketId
+            properties:
+              compositeBookingId:
+                type: integer
+                format: int64
+                description: |
+                  Уникальный идентификатор составного бронирования,
+                  созданный оркестратором путешествий.
+                example: 123312
+              ticketId:
+                type: integer
+                format: int64
+                description: |
+                  Уникальный идентификатор авиабилета,
+                  над которым выполняется операция.
+                example: 12345
+    summary: Отмена бронирования авиабилета
+    description: |
+      Получает команду на отмену ранее созданного
+      бронирования авиабилета.
+
+      compositeBookingId используется для идентификации
+      составного бронирования, к которому относится
+      операция.
+  reservationStatusChanged:
+    action: send
+    channel:
+      address: ticket.reservation-status
+      messages:
+        reservationStatusChanged:
+          name: ReservationStatusChanged
+          title: Результат изменения статуса бронирования
+          payload:
+            type: object
+            description: |
+              Событие с результатом обработки операции
+              бронирования авиабилета.
+
+              compositeBookingId соответствует идентификатору,
+              переданному в исходной команде.
+            required:
+            - compositeBookingId
+            - ticketId
+            - status
+            properties:
+              compositeBookingId:
+                type: integer
+                format: int64
+                description: |
+                  Идентификатор составного бронирования,
+                  к которому относится событие.
+                example: 12431243
+              ticketId:
+                type: integer
+                format: int64
+                description: |
+                  Идентификатор авиабилета.
+                example: 12345
+              status:
+                type: string
+                description: |
+                  Новый статус бронирования авиабилета.
+                enum:
+                - AVAILABLE
+                - RESERVATION_PENDING
+                - RESERVED
+                - CANCELLATION_PENDING
+                - CANCELLED
+                example: RESERVED
+    summary: Изменение статуса бронирования
+    description: |
+      Публикует результат обработки команды бронирования
+      или отмены бронирования.
+
+      compositeBookingId из исходной команды передаётся
+      без изменений, чтобы оркестратор мог определить,
+      к какому составному бронированию относится событие.
+components:
+  messages:
+    ReserveTicket:
+      name: ReserveTicket
+      title: Команда на бронирование авиабилета
+      payload:
+        type: object
+        description: |
+          Команда на выполнение операции с бронированием
+          авиабилета.
+        required:
+        - compositeBookingId
+        - ticketId
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            description: |
+              Уникальный идентификатор составного бронирования,
+              созданный оркестратором путешествий.
+            example: 123312
+          ticketId:
+            type: integer
+            format: int64
+            description: |
+              Уникальный идентификатор авиабилета,
+              над которым выполняется операция.
+            example: 12345
+    CancelTicket:
+      name: CancelTicket
+      title: Команда на отмену бронирования авиабилета
+      payload:
+        type: object
+        description: |
+          Команда на выполнение операции с бронированием
+          авиабилета.
+        required:
+        - compositeBookingId
+        - ticketId
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            description: |
+              Уникальный идентификатор составного бронирования,
+              созданный оркестратором путешествий.
+            example: 123312
+          ticketId:
+            type: integer
+            format: int64
+            description: |
+              Уникальный идентификатор авиабилета,
+              над которым выполняется операция.
+            example: 12345
+    ReservationStatusChanged:
+      name: ReservationStatusChanged
+      title: Результат изменения статуса бронирования
+      payload:
+        type: object
+        description: |
+          Событие с результатом обработки операции
+          бронирования авиабилета.
+
+          compositeBookingId соответствует идентификатору,
+          переданному в исходной команде.
+        required:
+        - compositeBookingId
+        - ticketId
+        - status
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            description: |
+              Идентификатор составного бронирования,
+              к которому относится событие.
+            example: 12431243
+          ticketId:
+            type: integer
+            format: int64
+            description: |
+              Идентификатор авиабилета.
+            example: 12345
+          status:
+            type: string
+            description: |
+              Новый статус бронирования авиабилета.
+            enum:
+            - AVAILABLE
+            - RESERVATION_PENDING
+            - RESERVED
+            - CANCELLATION_PENDING
+            - CANCELLED
+            example: RESERVED
+  schemas:
+    TicketCommand:
+      type: object
+      description: |
+        Команда на выполнение операции с бронированием
+        авиабилета.
+      required:
+      - compositeBookingId
+      - ticketId
+      properties:
+        compositeBookingId:
+          type: integer
+          format: int64
+          description: |
+            Уникальный идентификатор составного бронирования,
+            созданный оркестратором путешествий.
+          example: 123312
+        ticketId:
+          type: integer
+          format: int64
+          description: |
+            Уникальный идентификатор авиабилета,
+            над которым выполняется операция.
+          example: 12345
+    ReservationStatusChangedPayload:
+      type: object
+      description: |
+        Событие с результатом обработки операции
+        бронирования авиабилета.
+
+        compositeBookingId соответствует идентификатору,
+        переданному в исходной команде.
+      required:
+      - compositeBookingId
+      - ticketId
+      - status
+      properties:
+        compositeBookingId:
+          type: integer
+          format: int64
+          description: |
+            Идентификатор составного бронирования,
+            к которому относится событие.
+          example: 12431243
+        ticketId:
+          type: integer
+          format: int64
+          description: |
+            Идентификатор авиабилета.
+          example: 12345
+        status:
+          type: string
+          description: |
+            Новый статус бронирования авиабилета.
+          enum:
+          - AVAILABLE
+          - RESERVATION_PENDING
+          - RESERVED
+          - CANCELLATION_PENDING
+          - CANCELLED
+          example: RESERVED

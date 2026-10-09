@@ -1,0 +1,384 @@
+openapi: 3.0.4
+info:
+  title: Сервис отелей
+  description: |
+    Тестовый сервис отелей для взаимодействия
+    с сервисом оркестрации путешествий.
+
+    Сервис выступает интеграционным слоем между оркестратором
+    и внешним сервисом бронирования отелей.
+
+    HTTP API предоставляет операции поиска городов, отелей,
+    доступных номеров и получения статуса бронирования.
+
+    Бронирование и отмена бронирования выполняются
+    асинхронно через Kafka. HTTP API не предоставляет
+    операций для отправки этих команд.
+  version: 1.0.0
+servers:
+- url: https://virtserver.swaggerhub.com/tpu228/HotelBooking/1.0.0
+  description: SwaggerHub API Auto Mocking
+- url: http://localhost:8080
+  description: Локальный сервер для разработки и тестирования
+tags:
+- name: Города
+  description: "Поиск городов, в которых есть отели."
+- name: Отели
+  description: Поиск отелей по городам.
+- name: Комнаты
+  description: Поиск доступных номеров в отеле.
+- name: Бронирование
+  description: Получение статуса бронирования номера.
+paths:
+  /cities:
+    get:
+      tags:
+      - Города
+      summary: Поиск городов
+      description: |
+        Возвращает список уникальных городов, в которых
+        представлены отели.
+
+        Поиск выполняется по частичному совпадению названия
+        без учёта регистра.
+
+        Если query не указан, возвращаются все доступные города.
+        Названия берутся из поля city сущности Hotel.
+      operationId: searchCities
+      parameters:
+      - name: query
+        in: query
+        description: Часть названия города для поиска.
+        required: false
+        schema:
+          maxLength: 100
+          minLength: 1
+          type: string
+        example: mos
+      responses:
+        "200":
+          description: Список найденных городов. Может быть пустым.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+              - Moscow
+              - Mosul
+        "400":
+          description: Некорректный параметр query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: INVALID_PARAMETER
+                message: Параметр query не может быть пустой строкой.
+  /hotels:
+    get:
+      tags:
+      - Отели
+      summary: Поиск отелей по городу
+      description: |
+        Возвращает список отелей, расположенных в указанном городе.
+
+        Если отели не найдены, возвращается пустой список.
+      operationId: searchHotels
+      parameters:
+      - name: city
+        in: query
+        description: "Название города, в котором ищутся отели."
+        required: true
+        schema:
+          maxLength: 100
+          minLength: 1
+          type: string
+        example: Moscow
+      responses:
+        "200":
+          description: Список отелей в указанном городе.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Hotel"
+        "400":
+          description: Не указан город или его значение некорректно.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: INVALID_PARAMETER
+                message: Необходимо указать город поиска.
+  /hotels/{hotelId}/rooms:
+    get:
+      tags:
+      - Комнаты
+      summary: Поиск доступных номеров
+      description: |
+        Возвращает номера указанного отеля, подходящие
+        по вместимости и доступные на весь период проживания.
+
+        Номер доступен, если на указанный период нет
+        пересекающегося активного бронирования.
+
+        Дата выезда не включается в период проживания.
+        Дата заезда должна быть раньше даты выезда.
+      operationId: searchAvailableRooms
+      parameters:
+      - name: hotelId
+        in: path
+        description: Идентификатор отеля.
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+          format: int64
+        example: 1210
+      - name: arrivalDate
+        in: query
+        description: Дата и время заезда в формате ISO 8601.
+        required: true
+        schema:
+          type: string
+          format: date-time
+        example: 2026-10-15T14:00:00Z
+      - name: departureDate
+        in: query
+        description: Дата и время выезда в формате ISO 8601.
+        required: true
+        schema:
+          type: string
+          format: date-time
+        example: 2026-10-18T12:00:00Z
+      - name: guestsCount
+        in: query
+        description: Минимальная вместимость номера.
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+        example: 2
+      responses:
+        "200":
+          description: Список подходящих номеров. Может быть пустым.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+        "400":
+          description: Некорректные даты или количество гостей.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: INVALID_PARAMETER
+                message: Дата выезда должна быть позже даты заезда.
+        "404":
+          description: Отель с указанным идентификатором не найден.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: HOTEL_NOT_FOUND
+                message: Отель с указанным ID не найден.
+  /bookings/{bookingId}/status:
+    get:
+      tags:
+      - Бронирование
+      summary: Получить статус бронирования
+      description: |
+        Возвращает текущее состояние бронирования номера.
+
+        После отправки команды через Kafka статус может
+        некоторое время оставаться промежуточным.
+
+        bookingId — внутренний идентификатор бронирования,
+        присвоенный сервисом отелей.
+      operationId: getBookingStatus
+      parameters:
+      - name: bookingId
+        in: path
+        description: Внутренний идентификатор бронирования.
+        required: true
+        schema:
+          minimum: 1
+          type: integer
+          format: int64
+        example: 101739
+      responses:
+        "200":
+          description: Текущий статус бронирования.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingStatusResponse"
+        "400":
+          description: Некорректный идентификатор бронирования.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: INVALID_PARAMETER
+                message: ID бронирования должен быть положительным числом.
+        "404":
+          description: Бронирование с указанным ID не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: BOOKING_NOT_FOUND
+                message: Бронирование с указанным ID не найдено.
+components:
+  schemas:
+    Hotel:
+      required:
+      - city
+      - id
+      - name
+      - stars
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор отеля.
+          format: int64
+          example: 1210
+        name:
+          type: string
+          description: Название отеля.
+          example: Marriott
+        city:
+          type: string
+          description: "Город, в котором находится отель."
+          example: Moscow
+        stars:
+          maximum: 5
+          minimum: 1
+          type: integer
+          description: Количество звёзд отеля.
+          example: 4
+        latitude:
+          maximum: 90
+          minimum: -90
+          type: number
+          description: Географическая широта отеля.
+          format: double
+          example: 55.7558
+        longitude:
+          maximum: 180
+          minimum: -180
+          type: number
+          description: Географическая долгота отеля.
+          format: double
+          example: 37.6173
+      description: Основная информация об отеле.
+    Room:
+      required:
+      - guestsCount
+      - hotelId
+      - id
+      - pricePerNight
+      - roomNumber
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Уникальный идентификатор номера.
+          format: int64
+          example: 201
+        hotelId:
+          type: integer
+          description: "Идентификатор отеля, которому принадлежит номер."
+          format: int64
+          example: 1210
+        pricePerNight:
+          minimum: 0
+          type: number
+          description: |
+            Стоимость одной ночи проживания.
+            Валюта определяется конфигурацией сервиса.
+          format: double
+          example: 1499.99
+        roomNumber:
+          type: string
+          description: Номер комнаты в отеле.
+          example: 104A
+        guestsCount:
+          minimum: 1
+          type: integer
+          description: Максимальное количество гостей.
+          example: 2
+      description: Основные характеристики номера.
+    ReservationStatus:
+      type: string
+      description: Текущее состояние бронирования номера.
+      example: RESERVED
+      enum:
+      - AVAILABLE
+      - RESERVATION_PENDING
+      - RESERVED
+      - CANCELLATION_PENDING
+      - CANCELLED
+    BookingStatusResponse:
+      required:
+      - arrivalDate
+      - bookingId
+      - departureDate
+      - reservationStatus
+      - roomId
+      type: object
+      properties:
+        bookingId:
+          type: integer
+          description: Внутренний идентификатор бронирования.
+          format: int64
+          example: 101739
+        roomId:
+          type: integer
+          description: Идентификатор забронированного номера.
+          format: int64
+          example: 201
+        reservationStatus:
+          $ref: "#/components/schemas/ReservationStatus"
+        arrivalDate:
+          type: string
+          description: Дата и время заезда.
+          format: date-time
+          example: 2026-10-15T14:00:00Z
+        departureDate:
+          type: string
+          description: Дата и время выезда.
+          format: date-time
+          example: 2026-10-18T12:00:00Z
+        updatedAt:
+          type: string
+          description: "Время последнего изменения статуса, если хранится."
+          format: date-time
+          example: 2026-10-10T09:42:15Z
+      description: Информация о бронировании и его текущем статусе.
+    Error:
+      required:
+      - code
+      - message
+      type: object
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки.
+          example: INVALID_PARAMETER
+        message:
+          type: string
+          description: Человекочитаемое описание ошибки.
+          example: Необходимо указать город поиска.
+      description: Общий формат ошибки API.

@@ -1,0 +1,848 @@
+openapi: 3.1.0
+info:
+  title: Сервис авиабилетов
+  version: 1.1.0
+  description: "Тестовый сервис авиабилетов для взаимодействия\nс сервисом оркестрации путешествий.\n\nВ данной версии сервис имеет минимальную рабочую \nконфигурацию. Для запросов используются только \nпараметры. Добавление дальнейшего функционала \nрекомендуется после реализации данного.\n\nСервис предоставляет HTTP API для поиска городов,\nпоиска доступных авиабилетов и получения статуса\nбронирования билета.\n\nБронирование и отмена бронирования выполняются\nасинхронно через Kafka. HTTP API не предоставляет\nопераций для отправки этих команд.\n"
+servers:
+- url: http://localhost:8080
+  description: Локальный сервер для разработки и тестирования
+tags:
+- name: Города
+  description: "Поиск городов, из которых доступны авиаперелёты."
+- name: Билеты
+  description: Поиск доступных билетов на прямые рейсы.
+- name: Бронирование
+  description: Получение текущего статуса бронирования билета.
+paths:
+  /cities:
+    get:
+      tags:
+      - Города
+      summary: Поиск городов
+      description: |
+        Возвращает список уникальных названий городов,
+        присутствующих в системе.
+
+        Поиск выполняется по частичному совпадению названия
+        без учёта регистра.
+
+        Если параметр query не указан, возвращаются все
+        доступные города.
+
+        Город не является отдельной сущностью в модели данных.
+        Названия городов берутся из поля city сущности Airport.
+      operationId: searchCities
+      parameters:
+      - name: query
+        in: query
+        required: false
+        description: |
+          Часть названия города для поиска.
+          Если параметр отсутствует, возвращаются все города.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        example: mos
+      responses:
+        "200":
+          description: Список найденных городов. Может быть пустым.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  description: Название города.
+                example:
+                - Moscow
+                - Mosul
+        "400":
+          description: Некорректные параметры запроса.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Стандартный формат ошибки API.
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Машиночитаемый код ошибки.
+                    example: INVALID_PARAMETER
+                  message:
+                    type: string
+                    description: Человекочитаемое описание ошибки.
+                    example: Необходимо указать город отправления.
+  /tickets:
+    get:
+      tags:
+      - Билеты
+      summary: Поиск доступных билетов
+      description: |
+        Возвращает список доступных билетов на прямые рейсы
+        между городами отправления и прибытия.
+
+        Поиск выполняется по названиям городов, указанным
+        в поле city соответствующих аэропортов.
+
+        В результат включаются билеты со статусом AVAILABLE,
+        рейсы которых не отменены.
+
+        Каждый билет содержит цену, номер места, статус
+        бронирования и информацию о соответствующем рейсе,
+        включая аэропорты отправления и прибытия.
+
+        Если подходящие билеты отсутствуют, возвращается
+        пустой список.
+
+        Пересадки не поддерживаются.
+      operationId: searchTickets
+      parameters:
+      - name: from
+        in: query
+        required: true
+        description: Название города отправления.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        example: Moscow
+      - name: to
+        in: query
+        required: true
+        description: Название города прибытия.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        example: Berlin
+      responses:
+        "200":
+          description: Список доступных билетов. Может быть пустым.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: |
+                    Билет на конкретный рейс.
+                    Несколько билетов могут относиться к одному рейсу
+                    и отличаться номером места, ценой и статусом бронирования.
+                  required:
+                  - id
+                  - price
+                  - seat
+                  - flight
+                  - reservationStatus
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                      description: Уникальный идентификатор билета.
+                      example: 12345
+                    price:
+                      type: number
+                      format: double
+                      minimum: 0
+                      description: |
+                        Стоимость билета.
+                        Валюта определяется конфигурацией сервиса.
+                      example: 149.99
+                    seat:
+                      type: string
+                      description: Номер места в самолёте.
+                      pattern: "^[0-9]{1,3}[A-F]$"
+                      example: 12A
+                    flight:
+                      type: object
+                      description: |
+                        Конкретный прямой рейс между двумя аэропортами.
+                        Содержит время отправления и прибытия, а также признак
+                        отмены рейса.
+                      required:
+                      - id
+                      - departureDate
+                      - arrivalDate
+                      - from
+                      - to
+                      - isCancelled
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                          description: Уникальный идентификатор рейса.
+                          example: 5001
+                        departureDate:
+                          type: string
+                          format: date-time
+                          description: |
+                            Дата и время отправления.
+                            Формат ISO 8601 с указанием часового пояса.
+                          example: 2026-10-15T10:30:00Z
+                        arrivalDate:
+                          type: string
+                          format: date-time
+                          description: |
+                            Дата и время прибытия.
+                            Формат ISO 8601 с указанием часового пояса.
+                          example: 2026-10-15T13:45:00Z
+                        from:
+                          allOf:
+                          - type: object
+                            description: |
+                              Аэропорт отправления или прибытия.
+                              Город хранится непосредственно в поле city.
+                            required:
+                            - id
+                            - codeIata
+                            - city
+                            properties:
+                              id:
+                                type: integer
+                                format: int64
+                                description: Уникальный идентификатор аэропорта.
+                                example: 101
+                              codeIata:
+                                type: string
+                                description: Трёхбуквенный код аэропорта IATA.
+                                pattern: "^[A-Z]{3}$"
+                                example: SVO
+                              city:
+                                type: string
+                                description: "Название города, в котором расположен аэропорт."
+                                example: Moscow
+                              longitude:
+                                type: number
+                                format: double
+                                description: Географическая долгота аэропорта.
+                                minimum: -180
+                                maximum: 180
+                                example: 37.4146
+                              latitude:
+                                type: number
+                                format: double
+                                description: Географическая широта аэропорта.
+                                minimum: -90
+                                maximum: 90
+                                example: 55.9726
+                          description: Аэропорт отправления.
+                        to:
+                          allOf:
+                          - type: object
+                            description: |
+                              Аэропорт отправления или прибытия.
+                              Город хранится непосредственно в поле city.
+                            required:
+                            - id
+                            - codeIata
+                            - city
+                            properties:
+                              id:
+                                type: integer
+                                format: int64
+                                description: Уникальный идентификатор аэропорта.
+                                example: 101
+                              codeIata:
+                                type: string
+                                description: Трёхбуквенный код аэропорта IATA.
+                                pattern: "^[A-Z]{3}$"
+                                example: SVO
+                              city:
+                                type: string
+                                description: "Название города, в котором расположен аэропорт."
+                                example: Moscow
+                              longitude:
+                                type: number
+                                format: double
+                                description: Географическая долгота аэропорта.
+                                minimum: -180
+                                maximum: 180
+                                example: 37.4146
+                              latitude:
+                                type: number
+                                format: double
+                                description: Географическая широта аэропорта.
+                                minimum: -90
+                                maximum: 90
+                                example: 55.9726
+                          description: Аэропорт прибытия.
+                        isCancelled:
+                          type: boolean
+                          description: |
+                            Признак отмены рейса.
+                            true — рейс отменён, false — рейс не отменён.
+                          example: false
+                    reservationStatus:
+                      type: string
+                      description: |
+                        Текущее состояние бронирования билета.
+
+                        AVAILABLE — билет доступен для бронирования.
+
+                        RESERVATION_PENDING — бронирование ожидает обработки
+                        или завершения.
+
+                        RESERVED — билет успешно забронирован.
+
+                        CANCELLATION_PENDING — отмена бронирования ожидает
+                        обработки или завершения.
+
+                        CANCELLED — бронирование отменено.
+                      enum:
+                      - AVAILABLE
+                      - RESERVATION_PENDING
+                      - RESERVED
+                      - CANCELLATION_PENDING
+                      - CANCELLED
+                      example: RESERVED
+        "400":
+          description: |
+            Не указаны обязательные параметры или их значения
+            некорректны.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Стандартный формат ошибки API.
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Машиночитаемый код ошибки.
+                    example: INVALID_PARAMETER
+                  message:
+                    type: string
+                    description: Человекочитаемое описание ошибки.
+                    example: Необходимо указать город отправления.
+  /tickets/{ticketId}/reservation-status:
+    get:
+      tags:
+      - Бронирование
+      summary: Получить статус бронирования билета
+      description: |
+        Возвращает текущее состояние бронирования указанного
+        билета.
+
+        Например, после обработки команды бронирования статус
+        может измениться с AVAILABLE на RESERVED через
+        RESERVATION_PENDING.
+
+        При отмене бронирования аналогично используется
+        промежуточный статус CANCELLATION_PENDING.
+
+        Ответ отражает состояние, сохранённое сервисом
+        на момент обработки запроса.
+      operationId: getReservationStatus
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        description: Уникальный идентификатор билета.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+        example: 12345
+      responses:
+        "200":
+          description: Статус бронирования найденного билета.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Ответ с текущим статусом бронирования билета.
+                required:
+                - ticketId
+                - status
+                properties:
+                  ticketId:
+                    type: integer
+                    format: int64
+                    description: Идентификатор билета.
+                    example: 12345
+                  status:
+                    type: string
+                    description: |
+                      Текущее состояние бронирования билета.
+
+                      AVAILABLE — билет доступен для бронирования.
+
+                      RESERVATION_PENDING — бронирование ожидает обработки
+                      или завершения.
+
+                      RESERVED — билет успешно забронирован.
+
+                      CANCELLATION_PENDING — отмена бронирования ожидает
+                      обработки или завершения.
+
+                      CANCELLED — бронирование отменено.
+                    enum:
+                    - AVAILABLE
+                    - RESERVATION_PENDING
+                    - RESERVED
+                    - CANCELLATION_PENDING
+                    - CANCELLED
+                    example: RESERVED
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    description: |
+                      Дата и время последнего изменения статуса,
+                      если эта информация хранится сервисом.
+                    example: 2026-10-15T09:42:15Z
+        "400":
+          description: Некорректный идентификатор билета.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Стандартный формат ошибки API.
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Машиночитаемый код ошибки.
+                    example: INVALID_PARAMETER
+                  message:
+                    type: string
+                    description: Человекочитаемое описание ошибки.
+                    example: Необходимо указать город отправления.
+        "404":
+          description: Билет с указанным идентификатором не найден.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Стандартный формат ошибки API.
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Машиночитаемый код ошибки.
+                    example: INVALID_PARAMETER
+                  message:
+                    type: string
+                    description: Человекочитаемое описание ошибки.
+                    example: Необходимо указать город отправления.
+components:
+  schemas:
+    Airport:
+      type: object
+      description: |
+        Аэропорт отправления или прибытия.
+        Город хранится непосредственно в поле city.
+      required:
+      - id
+      - codeIata
+      - city
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Уникальный идентификатор аэропорта.
+          example: 101
+        codeIata:
+          type: string
+          description: Трёхбуквенный код аэропорта IATA.
+          pattern: "^[A-Z]{3}$"
+          example: SVO
+        city:
+          type: string
+          description: "Название города, в котором расположен аэропорт."
+          example: Moscow
+        longitude:
+          type: number
+          format: double
+          description: Географическая долгота аэропорта.
+          minimum: -180
+          maximum: 180
+          example: 37.4146
+        latitude:
+          type: number
+          format: double
+          description: Географическая широта аэропорта.
+          minimum: -90
+          maximum: 90
+          example: 55.9726
+    Flight:
+      type: object
+      description: |
+        Конкретный прямой рейс между двумя аэропортами.
+        Содержит время отправления и прибытия, а также признак
+        отмены рейса.
+      required:
+      - id
+      - departureDate
+      - arrivalDate
+      - from
+      - to
+      - isCancelled
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Уникальный идентификатор рейса.
+          example: 5001
+        departureDate:
+          type: string
+          format: date-time
+          description: |
+            Дата и время отправления.
+            Формат ISO 8601 с указанием часового пояса.
+          example: 2026-10-15T10:30:00Z
+        arrivalDate:
+          type: string
+          format: date-time
+          description: |
+            Дата и время прибытия.
+            Формат ISO 8601 с указанием часового пояса.
+          example: 2026-10-15T13:45:00Z
+        from:
+          allOf:
+          - type: object
+            description: |
+              Аэропорт отправления или прибытия.
+              Город хранится непосредственно в поле city.
+            required:
+            - id
+            - codeIata
+            - city
+            properties:
+              id:
+                type: integer
+                format: int64
+                description: Уникальный идентификатор аэропорта.
+                example: 101
+              codeIata:
+                type: string
+                description: Трёхбуквенный код аэропорта IATA.
+                pattern: "^[A-Z]{3}$"
+                example: SVO
+              city:
+                type: string
+                description: "Название города, в котором расположен аэропорт."
+                example: Moscow
+              longitude:
+                type: number
+                format: double
+                description: Географическая долгота аэропорта.
+                minimum: -180
+                maximum: 180
+                example: 37.4146
+              latitude:
+                type: number
+                format: double
+                description: Географическая широта аэропорта.
+                minimum: -90
+                maximum: 90
+                example: 55.9726
+          description: Аэропорт отправления.
+        to:
+          allOf:
+          - type: object
+            description: |
+              Аэропорт отправления или прибытия.
+              Город хранится непосредственно в поле city.
+            required:
+            - id
+            - codeIata
+            - city
+            properties:
+              id:
+                type: integer
+                format: int64
+                description: Уникальный идентификатор аэропорта.
+                example: 101
+              codeIata:
+                type: string
+                description: Трёхбуквенный код аэропорта IATA.
+                pattern: "^[A-Z]{3}$"
+                example: SVO
+              city:
+                type: string
+                description: "Название города, в котором расположен аэропорт."
+                example: Moscow
+              longitude:
+                type: number
+                format: double
+                description: Географическая долгота аэропорта.
+                minimum: -180
+                maximum: 180
+                example: 37.4146
+              latitude:
+                type: number
+                format: double
+                description: Географическая широта аэропорта.
+                minimum: -90
+                maximum: 90
+                example: 55.9726
+          description: Аэропорт прибытия.
+        isCancelled:
+          type: boolean
+          description: |
+            Признак отмены рейса.
+            true — рейс отменён, false — рейс не отменён.
+          example: false
+    Ticket:
+      type: object
+      description: |
+        Билет на конкретный рейс.
+        Несколько билетов могут относиться к одному рейсу
+        и отличаться номером места, ценой и статусом бронирования.
+      required:
+      - id
+      - price
+      - seat
+      - flight
+      - reservationStatus
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Уникальный идентификатор билета.
+          example: 12345
+        price:
+          type: number
+          format: double
+          minimum: 0
+          description: |
+            Стоимость билета.
+            Валюта определяется конфигурацией сервиса.
+          example: 149.99
+        seat:
+          type: string
+          description: Номер места в самолёте.
+          pattern: "^[0-9]{1,3}[A-F]$"
+          example: 12A
+        flight:
+          type: object
+          description: |
+            Конкретный прямой рейс между двумя аэропортами.
+            Содержит время отправления и прибытия, а также признак
+            отмены рейса.
+          required:
+          - id
+          - departureDate
+          - arrivalDate
+          - from
+          - to
+          - isCancelled
+          properties:
+            id:
+              type: integer
+              format: int64
+              description: Уникальный идентификатор рейса.
+              example: 5001
+            departureDate:
+              type: string
+              format: date-time
+              description: |
+                Дата и время отправления.
+                Формат ISO 8601 с указанием часового пояса.
+              example: 2026-10-15T10:30:00Z
+            arrivalDate:
+              type: string
+              format: date-time
+              description: |
+                Дата и время прибытия.
+                Формат ISO 8601 с указанием часового пояса.
+              example: 2026-10-15T13:45:00Z
+            from:
+              allOf:
+              - type: object
+                description: |
+                  Аэропорт отправления или прибытия.
+                  Город хранится непосредственно в поле city.
+                required:
+                - id
+                - codeIata
+                - city
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                    description: Уникальный идентификатор аэропорта.
+                    example: 101
+                  codeIata:
+                    type: string
+                    description: Трёхбуквенный код аэропорта IATA.
+                    pattern: "^[A-Z]{3}$"
+                    example: SVO
+                  city:
+                    type: string
+                    description: "Название города, в котором расположен аэропорт."
+                    example: Moscow
+                  longitude:
+                    type: number
+                    format: double
+                    description: Географическая долгота аэропорта.
+                    minimum: -180
+                    maximum: 180
+                    example: 37.4146
+                  latitude:
+                    type: number
+                    format: double
+                    description: Географическая широта аэропорта.
+                    minimum: -90
+                    maximum: 90
+                    example: 55.9726
+              description: Аэропорт отправления.
+            to:
+              allOf:
+              - type: object
+                description: |
+                  Аэропорт отправления или прибытия.
+                  Город хранится непосредственно в поле city.
+                required:
+                - id
+                - codeIata
+                - city
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                    description: Уникальный идентификатор аэропорта.
+                    example: 101
+                  codeIata:
+                    type: string
+                    description: Трёхбуквенный код аэропорта IATA.
+                    pattern: "^[A-Z]{3}$"
+                    example: SVO
+                  city:
+                    type: string
+                    description: "Название города, в котором расположен аэропорт."
+                    example: Moscow
+                  longitude:
+                    type: number
+                    format: double
+                    description: Географическая долгота аэропорта.
+                    minimum: -180
+                    maximum: 180
+                    example: 37.4146
+                  latitude:
+                    type: number
+                    format: double
+                    description: Географическая широта аэропорта.
+                    minimum: -90
+                    maximum: 90
+                    example: 55.9726
+              description: Аэропорт прибытия.
+            isCancelled:
+              type: boolean
+              description: |
+                Признак отмены рейса.
+                true — рейс отменён, false — рейс не отменён.
+              example: false
+        reservationStatus:
+          type: string
+          description: |
+            Текущее состояние бронирования билета.
+
+            AVAILABLE — билет доступен для бронирования.
+
+            RESERVATION_PENDING — бронирование ожидает обработки
+            или завершения.
+
+            RESERVED — билет успешно забронирован.
+
+            CANCELLATION_PENDING — отмена бронирования ожидает
+            обработки или завершения.
+
+            CANCELLED — бронирование отменено.
+          enum:
+          - AVAILABLE
+          - RESERVATION_PENDING
+          - RESERVED
+          - CANCELLATION_PENDING
+          - CANCELLED
+          example: RESERVED
+    ReservationStatus:
+      type: string
+      description: |
+        Текущее состояние бронирования билета.
+
+        AVAILABLE — билет доступен для бронирования.
+
+        RESERVATION_PENDING — бронирование ожидает обработки
+        или завершения.
+
+        RESERVED — билет успешно забронирован.
+
+        CANCELLATION_PENDING — отмена бронирования ожидает
+        обработки или завершения.
+
+        CANCELLED — бронирование отменено.
+      enum:
+      - AVAILABLE
+      - RESERVATION_PENDING
+      - RESERVED
+      - CANCELLATION_PENDING
+      - CANCELLED
+      example: RESERVED
+    ReservationStatusResponse:
+      type: object
+      description: Ответ с текущим статусом бронирования билета.
+      required:
+      - ticketId
+      - status
+      properties:
+        ticketId:
+          type: integer
+          format: int64
+          description: Идентификатор билета.
+          example: 12345
+        status:
+          type: string
+          description: |
+            Текущее состояние бронирования билета.
+
+            AVAILABLE — билет доступен для бронирования.
+
+            RESERVATION_PENDING — бронирование ожидает обработки
+            или завершения.
+
+            RESERVED — билет успешно забронирован.
+
+            CANCELLATION_PENDING — отмена бронирования ожидает
+            обработки или завершения.
+
+            CANCELLED — бронирование отменено.
+          enum:
+          - AVAILABLE
+          - RESERVATION_PENDING
+          - RESERVED
+          - CANCELLATION_PENDING
+          - CANCELLED
+          example: RESERVED
+        updatedAt:
+          type: string
+          format: date-time
+          description: |
+            Дата и время последнего изменения статуса,
+            если эта информация хранится сервисом.
+          example: 2026-10-15T09:42:15Z
+    Error:
+      type: object
+      description: Стандартный формат ошибки API.
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки.
+          example: INVALID_PARAMETER
+        message:
+          type: string
+          description: Человекочитаемое описание ошибки.
+          example: Необходимо указать город отправления.

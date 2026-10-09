@@ -1,0 +1,465 @@
+asyncapi: 3.0.0
+info:
+  title: Асинхронный API сервиса отелей
+  version: 1.0.0
+  description: "Асинхронный интерфейс сервиса отелей.\n\nБронирование и отмена бронирования номеров выполняются\nчерез Kafka.\n\ncompositeBookingId — идентификатор составного бронирования,\nсозданный оркестратором. Он передаётся в каждой команде\nи тот же самый возвращается в результирующем событии, \nчтобы оркестратор мог связать результат операции с составным\nбронированием (то есть сохраняется один и тот же в рамках всего\nсоставного бронирования).\n"
+servers:
+  kafka:
+    host: localhost:9092
+    protocol: kafka
+    description: "Kafka-брокер, ip пока случайный"
+channels:
+  hotel.reserve:
+    address: hotel.reserve
+    messages:
+      reserveRoom:
+        name: ReserveRoom
+        title: Команда на бронирование номера
+        payload:
+          type: object
+          description: Команда на бронирование или отмену бронирования.
+          required:
+          - compositeBookingId
+          - roomId
+          - arrivalDate
+          - departureDate
+          properties:
+            compositeBookingId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: |
+                Идентификатор составного бронирования путешествия,
+                созданный оркестратором.
+              example: 100001
+            roomId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: Идентификатор номера отеля.
+              example: 201829
+            arrivalDate:
+              type: string
+              format: date-time
+              description: Дата и время заезда.
+              example: 2026-10-15T14:00:00Z
+            departureDate:
+              type: string
+              format: date-time
+              description: Дата и время выезда.
+              example: 2026-10-18T12:00:00Z
+  hotel.cancel:
+    address: hotel.cancel
+    messages:
+      cancelRoom:
+        name: CancelRoom
+        title: Команда на отмену бронирования номера
+        payload:
+          type: object
+          description: Команда на бронирование или отмену бронирования.
+          required:
+          - compositeBookingId
+          - roomId
+          - arrivalDate
+          - departureDate
+          properties:
+            compositeBookingId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: |
+                Идентификатор составного бронирования путешествия,
+                созданный оркестратором.
+              example: 100001
+            roomId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: Идентификатор номера отеля.
+              example: 201829
+            arrivalDate:
+              type: string
+              format: date-time
+              description: Дата и время заезда.
+              example: 2026-10-15T14:00:00Z
+            departureDate:
+              type: string
+              format: date-time
+              description: Дата и время выезда.
+              example: 2026-10-18T12:00:00Z
+  hotel.reservation-status:
+    address: hotel.reservation-status
+    messages:
+      reservationStatusChanged:
+        name: ReservationStatusChanged
+        title: Результат операции бронирования
+        payload:
+          type: object
+          description: Результат обработки команды бронирования.
+          required:
+          - compositeBookingId
+          - bookingId
+          - roomId
+          - reservationStatus
+          properties:
+            compositeBookingId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: |
+                Идентификатор составного бронирования,
+                полученный из исходной команды.
+              example: 100001
+            bookingId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: Внутренний идентификатор бронирования.
+              example: 101739
+            roomId:
+              type: integer
+              format: int64
+              minimum: 1
+              description: Идентификатор номера.
+              example: 201
+            reservationStatus:
+              type: string
+              description: Текущий статус бронирования.
+              enum:
+              - AVAILABLE
+              - RESERVATION_PENDING
+              - RESERVED
+              - CANCELLATION_PENDING
+              - CANCELLED
+              example: RESERVED
+operations:
+  reserveRoom:
+    action: receive
+    channel:
+      address: hotel.reserve
+      messages:
+        reserveRoom:
+          name: ReserveRoom
+          title: Команда на бронирование номера
+          payload:
+            type: object
+            description: Команда на бронирование или отмену бронирования.
+            required:
+            - compositeBookingId
+            - roomId
+            - arrivalDate
+            - departureDate
+            properties:
+              compositeBookingId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: |
+                  Идентификатор составного бронирования путешествия,
+                  созданный оркестратором.
+                example: 100001
+              roomId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: Идентификатор номера отеля.
+                example: 201829
+              arrivalDate:
+                type: string
+                format: date-time
+                description: Дата и время заезда.
+                example: 2026-10-15T14:00:00Z
+              departureDate:
+                type: string
+                format: date-time
+                description: Дата и время выезда.
+                example: 2026-10-18T12:00:00Z
+    summary: Бронирование номера
+    description: |
+      Получает команду на бронирование номера
+      на указанный период проживания.
+  cancelRoom:
+    action: receive
+    channel:
+      address: hotel.cancel
+      messages:
+        cancelRoom:
+          name: CancelRoom
+          title: Команда на отмену бронирования номера
+          payload:
+            type: object
+            description: Команда на бронирование или отмену бронирования.
+            required:
+            - compositeBookingId
+            - roomId
+            - arrivalDate
+            - departureDate
+            properties:
+              compositeBookingId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: |
+                  Идентификатор составного бронирования путешествия,
+                  созданный оркестратором.
+                example: 100001
+              roomId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: Идентификатор номера отеля.
+                example: 201829
+              arrivalDate:
+                type: string
+                format: date-time
+                description: Дата и время заезда.
+                example: 2026-10-15T14:00:00Z
+              departureDate:
+                type: string
+                format: date-time
+                description: Дата и время выезда.
+                example: 2026-10-18T12:00:00Z
+    summary: Отмена бронирования номера
+    description: |
+      Получает команду на отмену бронирования номера.
+  reservationStatusChanged:
+    action: send
+    channel:
+      address: hotel.reservation-status
+      messages:
+        reservationStatusChanged:
+          name: ReservationStatusChanged
+          title: Результат операции бронирования
+          payload:
+            type: object
+            description: Результат обработки команды бронирования.
+            required:
+            - compositeBookingId
+            - bookingId
+            - roomId
+            - reservationStatus
+            properties:
+              compositeBookingId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: |
+                  Идентификатор составного бронирования,
+                  полученный из исходной команды.
+                example: 100001
+              bookingId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: Внутренний идентификатор бронирования.
+                example: 101739
+              roomId:
+                type: integer
+                format: int64
+                minimum: 1
+                description: Идентификатор номера.
+                example: 201
+              reservationStatus:
+                type: string
+                description: Текущий статус бронирования.
+                enum:
+                - AVAILABLE
+                - RESERVATION_PENDING
+                - RESERVED
+                - CANCELLATION_PENDING
+                - CANCELLED
+                example: RESERVED
+    summary: Изменение статуса бронирования
+    description: |
+      Публикует результат обработки команды бронирования
+      или отмены. compositeBookingId должен совпадать
+      с идентификатором из исходной команды.
+components:
+  messages:
+    ReserveRoom:
+      name: ReserveRoom
+      title: Команда на бронирование номера
+      payload:
+        type: object
+        description: Команда на бронирование или отмену бронирования.
+        required:
+        - compositeBookingId
+        - roomId
+        - arrivalDate
+        - departureDate
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: |
+              Идентификатор составного бронирования путешествия,
+              созданный оркестратором.
+            example: 100001
+          roomId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: Идентификатор номера отеля.
+            example: 201829
+          arrivalDate:
+            type: string
+            format: date-time
+            description: Дата и время заезда.
+            example: 2026-10-15T14:00:00Z
+          departureDate:
+            type: string
+            format: date-time
+            description: Дата и время выезда.
+            example: 2026-10-18T12:00:00Z
+    CancelRoom:
+      name: CancelRoom
+      title: Команда на отмену бронирования номера
+      payload:
+        type: object
+        description: Команда на бронирование или отмену бронирования.
+        required:
+        - compositeBookingId
+        - roomId
+        - arrivalDate
+        - departureDate
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: |
+              Идентификатор составного бронирования путешествия,
+              созданный оркестратором.
+            example: 100001
+          roomId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: Идентификатор номера отеля.
+            example: 201829
+          arrivalDate:
+            type: string
+            format: date-time
+            description: Дата и время заезда.
+            example: 2026-10-15T14:00:00Z
+          departureDate:
+            type: string
+            format: date-time
+            description: Дата и время выезда.
+            example: 2026-10-18T12:00:00Z
+    ReservationStatusChanged:
+      name: ReservationStatusChanged
+      title: Результат операции бронирования
+      payload:
+        type: object
+        description: Результат обработки команды бронирования.
+        required:
+        - compositeBookingId
+        - bookingId
+        - roomId
+        - reservationStatus
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: |
+              Идентификатор составного бронирования,
+              полученный из исходной команды.
+            example: 100001
+          bookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: Внутренний идентификатор бронирования.
+            example: 101739
+          roomId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: Идентификатор номера.
+            example: 201
+          reservationStatus:
+            type: string
+            description: Текущий статус бронирования.
+            enum:
+            - AVAILABLE
+            - RESERVATION_PENDING
+            - RESERVED
+            - CANCELLATION_PENDING
+            - CANCELLED
+            example: RESERVED
+  schemas:
+    RoomBookingCommand:
+      type: object
+      description: Команда на бронирование или отмену бронирования.
+      required:
+      - compositeBookingId
+      - roomId
+      - arrivalDate
+      - departureDate
+      properties:
+        compositeBookingId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Идентификатор составного бронирования путешествия,
+            созданный оркестратором.
+          example: 100001
+        roomId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Идентификатор номера отеля.
+          example: 201829
+        arrivalDate:
+          type: string
+          format: date-time
+          description: Дата и время заезда.
+          example: 2026-10-15T14:00:00Z
+        departureDate:
+          type: string
+          format: date-time
+          description: Дата и время выезда.
+          example: 2026-10-18T12:00:00Z
+    ReservationStatusChangedPayload:
+      type: object
+      description: Результат обработки команды бронирования.
+      required:
+      - compositeBookingId
+      - bookingId
+      - roomId
+      - reservationStatus
+      properties:
+        compositeBookingId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Идентификатор составного бронирования,
+            полученный из исходной команды.
+          example: 100001
+        bookingId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Внутренний идентификатор бронирования.
+          example: 101739
+        roomId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Идентификатор номера.
+          example: 201
+        reservationStatus:
+          type: string
+          description: Текущий статус бронирования.
+          enum:
+          - AVAILABLE
+          - RESERVATION_PENDING
+          - RESERVED
+          - CANCELLATION_PENDING
+          - CANCELLED
+          example: RESERVED
