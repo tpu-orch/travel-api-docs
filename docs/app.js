@@ -81,7 +81,10 @@ function showDocument(id, updateUrl = true) {
     } else {
       AsyncApiStandalone.render({
         schema: { url: documentInfo.url },
-        config: { show: { sidebar: true } }
+        config: {
+          show: { sidebar: true },
+          expand: { messageExamples: true }
+        }
       }, asyncapiContainer);
     }
   } catch (error) {
