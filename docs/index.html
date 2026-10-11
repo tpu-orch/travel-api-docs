@@ -1,46 +1,30 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Travel API Documentation</title>
-
-  <link rel="stylesheet"
-    href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="stylesheet" href="https://unpkg.com/@asyncapi/react-component@latest/styles/default.min.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>Travel API Documentation</h1>
+  <header>
+    <h1>Travel API Documentation</h1>
+    <div class="controls">
+      <label for="api-select">Выберите документацию:</label>
+      <select id="api-select" aria-label="Выберите документацию"></select>
+      <button id="share-button" type="button">Скопировать ссылку</button>
+      <span id="share-status" role="status" aria-live="polite"></span>
+    </div>
+  </header>
 
-  <label for="api-select">Выберите API:</label>
-  <select id="api-select">
-    <option value="specs/openapi/PlaneTickets.yaml">
-      Tickets API
-    </option>
-    <option value="specs/openapi/HotelBooking.yaml">
-      Hotels API
-    </option>
-  </select>
-
+  <p id="status" role="alert" hidden></p>
   <div id="swagger-ui"></div>
+  <div id="asyncapi-ui"></div>
 
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>
-    function showApi(url) {
-      SwaggerUIBundle({
-        url: url,
-        dom_id: '#swagger-ui',
-        deepLinking: true
-      });
-    }
-
-    const selector = document.getElementById('api-select');
-
-    selector.addEventListener('change', () => {
-      showApi(selector.value);
-    });
-
-    showApi(selector.value);
-  </script>
+  <script src="https://unpkg.com/@asyncapi/react-component@latest/browser/standalone/index.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
