@@ -6,31 +6,14 @@
   <title>Travel API Documentation</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
   <link rel="stylesheet" href="https://unpkg.com/@asyncapi/react-component@latest/styles/default.min.css">
-  <style>
-    body { margin: 0; font-family: system-ui, sans-serif; }
-    header { padding: 1rem 1.5rem; border-bottom: 1px solid #ddd; }
-    h1 { margin: 0 0 1rem; font-size: 1.5rem; }
-    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
-    select, button { padding: .5rem .75rem; font: inherit; }
-    #status { padding: 1rem 1.5rem; color: #8a2c2c; }
-    #swagger-ui, #asyncapi-ui { padding: 0 1rem; }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header>
     <h1>Travel API Documentation</h1>
     <div class="controls">
       <label for="api-select">Выберите документацию:</label>
-      <select id="api-select">
-        <optgroup label="OpenAPI">
-          <option value="tickets-openapi">Tickets OpenAPI</option>
-          <option value="hotels-openapi">Hotels OpenAPI</option>
-        </optgroup>
-        <optgroup label="AsyncAPI">
-          <option value="tickets-asyncapi">Tickets AsyncAPI</option>
-          <option value="hotels-asyncapi">Hotels AsyncAPI</option>
-        </optgroup>
-      </select>
+      <select id="api-select" aria-label="Выберите документацию"></select>
       <button id="share-button" type="button">Скопировать ссылку</button>
       <span id="share-status" role="status" aria-live="polite"></span>
     </div>
@@ -42,67 +25,6 @@
 
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script src="https://unpkg.com/@asyncapi/react-component@latest/browser/standalone/index.js"></script>
-  <script>
-    const documents = {
-      'tickets-openapi': { type: 'openapi', title: 'Tickets API', url: 'specs/openapi/PlaneTickets.yaml' },
-      'hotels-openapi': { type: 'openapi', title: 'Hotels API', url: 'specs/openapi/HotelBooking.yaml' },
-      'tickets-asyncapi': { type: 'asyncapi', title: 'Tickets API — события', url: 'specs/asyncapi/PlaneTicketsAsync.yaml' },
-      'hotels-asyncapi': { type: 'asyncapi', title: 'Hotels API — события', url: 'specs/asyncapi/HotelBookingAsync.yaml' }
-    };
-
-    const selector = document.getElementById('api-select');
-    const swaggerContainer = document.getElementById('swagger-ui');
-    const asyncapiContainer = document.getElementById('asyncapi-ui');
-    const status = document.getElementById('status');
-
-    function selectedDocument() {
-      const requested = new URLSearchParams(window.location.search).get('doc');
-      return Object.hasOwn(documents, requested) ? requested : 'tickets-openapi';
-    }
-
-    function showDocument(id, updateUrl = true) {
-      const documentInfo = documents[id] || documents['tickets-openapi'];
-      selector.value = id in documents ? id : 'tickets-openapi';
-      swaggerContainer.replaceChildren();
-      asyncapiContainer.replaceChildren();
-      status.hidden = true;
-      document.title = `${documentInfo.title} | Travel API Documentation`;
-
-      if (updateUrl) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('doc', selector.value);
-        window.history.replaceState({}, '', url);
-      }
-
-      try {
-        if (documentInfo.type === 'openapi') {
-          SwaggerUIBundle({ url: documentInfo.url, dom_id: '#swagger-ui', deepLinking: true });
-        } else {
-          AsyncApiStandalone.render({
-            schema: { url: documentInfo.url },
-            config: { show: { sidebar: true } }
-          }, asyncapiContainer);
-        }
-      } catch (error) {
-        status.textContent = `Не удалось открыть документацию: ${error.message}`;
-        status.hidden = false;
-      }
-    }
-
-    selector.addEventListener('change', () => showDocument(selector.value));
-    document.getElementById('share-button').addEventListener('click', async () => {
-      const shareStatus = document.getElementById('share-status');
-      const url = new URL(window.location.href);
-      url.searchParams.set('doc', selector.value);
-      try {
-        await navigator.clipboard.writeText(url.toString());
-        shareStatus.textContent = 'Ссылка скопирована';
-      } catch {
-        shareStatus.textContent = 'Скопируйте ссылку из адресной строки';
-      }
-    });
-
-    showDocument(selectedDocument(), false);
-  </script>
+  <script src="app.js"></script>
 </body>
 </html>
