@@ -35,3 +35,44 @@ button {
 #asyncapi-ui {
   padding: 0 1rem;
 }
+
+/* Hide the renderer's empty dark background column; keep its example cards. */
+#asyncapi-ui .panel--right {
+  display: none !important;
+}
+
+#asyncapi-ui .panel-item--center {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Keep AsyncAPI examples below their message instead of in the right column. */
+#asyncapi-ui .panel-item:has(.examples) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#asyncapi-ui .panel-item:has(.examples) > .panel-item--center,
+#asyncapi-ui .panel-item:has(.examples) > .panel-item--right {
+  position: static !important;
+  inset: auto !important;
+  grid-column: 1;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0;
+}
+
+/* Let the navigation follow the page, then stick to the top while scrolling. */
+#asyncapi-ui .sidebar {
+  height: auto !important;
+  max-height: none !important;
+  align-self: stretch;
+  background: #edf2f7 !important;
+}
+
+#asyncapi-ui .sidebar > div {
+  position: sticky !important;
+  top: 0 !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+}
