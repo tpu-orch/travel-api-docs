@@ -16,10 +16,8 @@ info:
     операций для отправки этих команд.
   version: 1.0.0
 servers:
-- url: https://virtserver.swaggerhub.com/tpu228/HotelBooking/1.0.0
-  description: SwaggerHub API Auto Mocking
 - url: http://localhost:8080
-  description: Локальный сервер для разработки и тестирования
+  description: IP пока что такой, потом заменим на реальный
 tags:
 - name: Города
   description: "Поиск городов, в которых есть отели."
