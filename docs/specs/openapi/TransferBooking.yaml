@@ -1,0 +1,244 @@
+openapi: 3.0.3
+info:
+  title: Сервис трансфера
+  version: 1.0.0
+  description: |
+    Сервис расчета стоимости и бронирования трансферов.
+
+    REST используется для:
+    - расчета доступных тарифов и общей стоимости поездки;
+    - получения информации о бронировании и его статусе.
+
+    Создание бронирования выполняется через Kafka.
+servers:
+  - url: 'http://localhost:8080'
+    description: Потом заменить на реальный адрес
+tags:
+  - name: Расчет стоимости
+    description: Получение доступных тарифов и стоимости поездки
+  - name: Бронирования
+    description: Получение информации о бронировании
+paths:
+  /transfers/quotes:
+    post:
+      tags:
+        - Расчет стоимости
+      summary: Рассчитать стоимость трансфера
+      description: |
+        Рассчитывает расстояние по прямой между двумя координатами
+        и возвращает доступные тарифы с общей стоимостью поездки.
+
+        Если участок маршрута проходит через несколько областей,
+        для каждого участка применяется максимальная цена за километр
+        среди всех областей, покрывающих этот участок.
+
+        start_datetime задает предполагаемое время начала поездки.
+        В текущей версии время не влияет на стоимость.
+
+        Запрос не создает бронирование.
+      operationId: calculateTransferQuotes
+      requestBody:
+        required: true
+        description: Координаты начальной и конечной точек и время начала поездки
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+            example:
+              startLatitude: 55.7558
+              startLongitude: 37.6173
+              endLatitude: 55.8
+              endLongitude: 37.5
+              start_datetime: '2026-10-30T14:30:00+03:00'
+      responses:
+        '200':
+          description: Расчет выполнен успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+              example:
+                distanceKm: 8.42
+                tariffs:
+                  - tariffName: VIP
+                    totalPrice: 1263
+                  - tariffName: Premium
+                    totalPrice: 757.8
+                  - tariffName: Economy
+                    totalPrice: 642
+        '400':
+          description: 'Некорректные координаты, дата или время начала поездки'
+        '404':
+          description: Для указанного маршрута нет доступных тарифов
+  '/bookings/{bookingId}':
+    get:
+      tags:
+        - Бронирования
+      summary: Получить информацию о бронировании
+      description: Возвращает информацию о поездке и текущий статус бронирования.
+      operationId: getBookingById
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          description: Числовой идентификатор бронирования
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 42
+      responses:
+        '200':
+          description: Бронирование найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                id: 42
+                tariffName: VIP
+                startLatitude: 55.7558
+                startLongitude: 37.6173
+                endLatitude: 55.8
+                endLongitude: 37.5
+                start_datetime: '2026-10-30T14:30:00+03:00'
+                calculatedPrice: 1263
+                bookingStatus: CONFIRMED
+                createdAt: '2026-10-28T10:30:00Z'
+        '404':
+          description: Бронирование с указанным идентификатором не найдено
+components:
+  schemas:
+    QuoteRequest:
+      type: object
+      required:
+        - startLatitude
+        - startLongitude
+        - endLatitude
+        - endLongitude
+        - start_datetime
+      properties:
+        startLatitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Широта начальной точки
+        startLongitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Долгота начальной точки
+        endLatitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Широта конечной точки
+        endLongitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Долгота конечной точки
+        start_datetime:
+          type: string
+          format: date-time
+          description: >-
+            Дата и время начала поездки с указанием часового пояса(в формате ISO
+            8601)
+          example: '2026-10-30T14:30:00+03:00'
+    QuoteResponse:
+      type: object
+      required:
+        - distanceKm
+        - tariffs
+      properties:
+        distanceKm:
+          type: number
+          format: double
+          minimum: 0
+          description: Расстояние между точками по прямой в километрах
+        tariffs:
+          type: array
+          description: Доступные тарифы и общая стоимость поездки
+          items:
+            $ref: '#/components/schemas/TariffQuote'
+    TariffQuote:
+      type: object
+      required:
+        - tariffName
+        - totalPrice
+      properties:
+        tariffName:
+          type: string
+          description: Название тарифа трансфера
+          example: VIP
+        totalPrice:
+          type: number
+          format: double
+          minimum: 0
+          description: Полная стоимость поездки по выбранному тарифу
+          example: 1263
+    Booking:
+      type: object
+      required:
+        - id
+        - tariffName
+        - startLatitude
+        - startLongitude
+        - endLatitude
+        - endLongitude
+        - start_datetime
+        - calculatedPrice
+        - bookingStatus
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Уникальный числовой идентификатор бронирования
+          example: 42
+        tariffName:
+          type: string
+          description: Название выбранного тарифа
+          example: VIP
+        startLatitude:
+          type: number
+          format: double
+          description: Широта начальной точки
+        startLongitude:
+          type: number
+          format: double
+          description: Долгота начальной точки
+        endLatitude:
+          type: number
+          format: double
+          description: Широта конечной точки
+        endLongitude:
+          type: number
+          format: double
+          description: Долгота конечной точки
+        start_datetime:
+          type: string
+          format: date-time
+          description: Запланированная дата и время начала поездки
+        calculatedPrice:
+          type: number
+          format: double
+          minimum: 0
+          description: Зафиксированная стоимость поездки
+        bookingStatus:
+          type: string
+          description: Текущий статус бронирования
+          enum:
+            - PENDING
+            - CONFIRMED
+            - REJECTED
+            - CANCELLED
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата и время создания бронирования

@@ -1,0 +1,174 @@
+asyncapi: 3.1.0
+info:
+  title: Асинхронный API сервиса трансфера
+  version: 1.0.0
+  description: |
+    Асинхронный интерфейс сервиса трансфера.
+
+    Бронирование поездки выполняется через Kafka.
+
+    compositeBookingId - идентификатор составного бронирования,
+    созданный оркестратором. Он передается в команде бронирования
+    и возвращается в результирующем событии без изменений,
+    чтобы оркестратор мог связать результат операции
+    с исходным составным бронированием.
+servers:
+  kafka:
+    host: 'localhost:9092'
+    protocol: kafka
+    description: Заменить потом на реальный
+channels:
+  transfer.booking:
+    address: transfer.booking
+    messages:
+      bookTransfer:
+        $ref: '#/components/messages/BookTransfer'
+  transfer.booking-status:
+    address: transfer.booking-status
+    messages:
+      bookingStatusChanged:
+        $ref: '#/components/messages/BookingStatusChanged'
+operations:
+  bookTransfer:
+    action: receive
+    channel:
+      $ref: '#/channels/transfer.booking'
+    messages:
+      - $ref: '#/channels/transfer.booking/messages/bookTransfer'
+    summary: Бронирование трансфера
+    description: |
+      Получает команду на бронирование трансфера
+      по указанному тарифу, координатам и времени начала поездки.
+      Рассчитывает стоимость и сохраняет результат бронирования.
+  bookingStatusChanged:
+    action: send
+    channel:
+      $ref: '#/channels/transfer.booking-status'
+    messages:
+      - $ref: '#/channels/transfer.booking-status/messages/bookingStatusChanged'
+    summary: Результат бронирования трансфера
+    description: |
+      Публикует результат обработки команды бронирования.
+      compositeBookingId должен совпадать с идентификатором
+      из исходной команды.
+components:
+  messages:
+    BookTransfer:
+      name: BookTransfer
+      title: Команда на бронирование трансфера
+      payload:
+        type: object
+        description: Данные для создания бронирования трансфера.
+        required:
+          - compositeBookingId
+          - tariffName
+          - startLatitude
+          - startLongitude
+          - endLatitude
+          - endLongitude
+          - start_datetime
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: |
+              Идентификатор составного бронирования,
+              созданный оркестратором.
+            example: 100001
+          tariffName:
+            type: string
+            description: Название выбранного тарифа трансфера.
+            example: VIP
+          startLatitude:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+            description: Широта начальной точки.
+            example: 55.7558
+          startLongitude:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+            description: Долгота начальной точки.
+            example: 37.6173
+          endLatitude:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+            description: Широта конечной точки.
+            example: 55.8
+          endLongitude:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+            description: Долгота конечной точки.
+            example: 37.5
+          start_datetime:
+            type: string
+            format: date-time
+            description: Дата и время начала поездки.
+            example: '2026-10-30T14:30:00+03:00'
+    BookingStatusChanged:
+      name: BookingStatusChanged
+      title: Результат бронирования трансфера
+      payload:
+        type: object
+        description: Результат обработки команды бронирования.
+        required:
+          - compositeBookingId
+          - bookingId
+          - tariffName
+          - start_datetime
+          - calculatedPrice
+          - bookingStatus
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: |
+              Идентификатор составного бронирования,
+              полученный из исходной команды.
+            example: 100001
+          bookingId:
+            type: integer
+            format: int64
+            minimum: 1
+            description: Внутренний идентификатор бронирования трансфера.
+            example: 42
+          tariffName:
+            type: string
+            description: Название выбранного тарифа.
+            example: VIP
+          start_datetime:
+            type: string
+            format: date-time
+            description: Дата и время начала поездки.
+            example: '2026-10-30T14:30:00+03:00'
+          calculatedPrice:
+            type: number
+            format: double
+            minimum: 0
+            description: Общая стоимость поездки.
+            example: 1263
+          bookingStatus:
+            type: string
+            description: Текущий статус бронирования.
+            enum:
+              - PENDING
+              - CONFIRMED
+              - REJECTED
+            example: CONFIRMED
+          rejectionReason:
+            type: string
+            description: 'Причина отказа, если бронирование отклонено.'
+          createdAt:
+            type: string
+            format: date-time
+            description: Дата и время создания бронирования.
+            example: '2026-10-28T10:30:00Z'

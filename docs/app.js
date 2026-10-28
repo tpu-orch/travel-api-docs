@@ -11,6 +11,12 @@ const documents = {
     label: 'Hotels OpenAPI',
     url: 'specs/openapi/HotelBooking.yaml'
   },
+  'transfer-openapi': {
+    type: 'openapi',
+    title: 'Transfer API',
+    label: 'Transfer OpenAPI',
+    url: 'specs/openapi/TransferBooking.yaml'
+  },
   'tickets-asyncapi': {
     type: 'asyncapi',
     title: 'Tickets API - события',
@@ -22,6 +28,12 @@ const documents = {
     title: 'Hotels API - события',
     label: 'Hotels AsyncAPI',
     url: 'specs/asyncapi/HotelBookingAsync.yaml'
+  },
+  'transfer-asyncapi': {
+    type: 'asyncapi',
+    title: 'Transfer API - события',
+    label: 'Transfer AsyncAPI',
+    url: 'specs/asyncapi/TransferBookingAsync.yaml'
   }
 };
 
