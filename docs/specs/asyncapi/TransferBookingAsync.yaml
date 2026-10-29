@@ -1,174 +1,217 @@
 asyncapi: 3.1.0
 info:
-  title: Асинхронный API сервиса трансфера
+  title: Transfer Service
   version: 1.0.0
   description: |
-    Асинхронный интерфейс сервиса трансфера.
-
-    Бронирование поездки выполняется через Kafka.
-
-    compositeBookingId - идентификатор составного бронирования,
-    созданный оркестратором. Он передается в команде бронирования
-    и возвращается в результирующем событии без изменений,
-    чтобы оркестратор мог связать результат операции
-    с исходным составным бронированием.
+    Асинхронный API сервиса трансферов.
+    Сервис принимает команды на бронирование и отмену трансфера,
+    а также публикует результаты обработки этих команд.
 servers:
   kafka:
     host: 'localhost:9092'
     protocol: kafka
-    description: Заменить потом на реальный
+    description: Потом заменим на реальный адрес
 channels:
-  transfer.booking:
+  transferBooking:
     address: transfer.booking
     messages:
       bookTransfer:
         $ref: '#/components/messages/BookTransfer'
-  transfer.booking-status:
+  transferBookingCancel:
+    address: transfer.booking.cancel
+    messages:
+      cancelTransfer:
+        $ref: '#/components/messages/CancelTransfer'
+  transferBookingStatus:
     address: transfer.booking-status
     messages:
       bookingStatusChanged:
         $ref: '#/components/messages/BookingStatusChanged'
+  transferCancellationResult:
+    address: transfer.cancellation-result
+    messages:
+      transferCancellationResult:
+        $ref: '#/components/messages/TransferCancellationResult'
 operations:
   bookTransfer:
     action: receive
     channel:
-      $ref: '#/channels/transfer.booking'
+      $ref: '#/channels/transferBooking'
     messages:
-      - $ref: '#/channels/transfer.booking/messages/bookTransfer'
-    summary: Бронирование трансфера
+      - $ref: '#/channels/transferBooking/messages/bookTransfer'
+    summary: Получить команду на бронирование трансфера
     description: |
-      Получает команду на бронирование трансфера
-      по указанному тарифу, координатам и времени начала поездки.
-      Рассчитывает стоимость и сохраняет результат бронирования.
+      Команда содержит compositeBookingId, назначенный оркестратором.
+      Сервис самостоятельно создает внутренний bookingId.
+      Стоимость рассчитывается сервисом по tariff_id и координатам маршрута.
+      start_datetime сохраняется в бронировании и не влияет на цену
+      в текущей версии сервиса.
+  cancelTransfer:
+    action: receive
+    channel:
+      $ref: '#/channels/transferBookingCancel'
+    messages:
+      - $ref: '#/channels/transferBookingCancel/messages/cancelTransfer'
+    summary: Получить команду на отмену бронирования
+    description: |
+      Оркестратор передает compositeBookingId для связи с общей операцией
+      и bookingId для идентификации бронирования внутри сервиса.
+      Отправка команды сама по себе не означает, что бронирование отменено.
   bookingStatusChanged:
     action: send
     channel:
-      $ref: '#/channels/transfer.booking-status'
+      $ref: '#/channels/transferBookingStatus'
     messages:
-      - $ref: '#/channels/transfer.booking-status/messages/bookingStatusChanged'
-    summary: Результат бронирования трансфера
+      - $ref: '#/channels/transferBookingStatus/messages/bookingStatusChanged'
+    summary: Опубликовать результат бронирования
     description: |
-      Публикует результат обработки команды бронирования.
-      compositeBookingId должен совпадать с идентификатором
-      из исходной команды.
+      Событие содержит итоговый статус бронирования.
+      При REJECTED обязательно указывается rejectionReason.
+      При CONFIRMED и CANCELLED это поле не требуется.
+  transferCancellationResult:
+    action: send
+    channel:
+      $ref: '#/channels/transferCancellationResult'
+    messages:
+      - $ref: >-
+          #/channels/transferCancellationResult/messages/transferCancellationResult
+    summary: Опубликовать результат обработки отмены
+    description: |
+      Событие подтверждает результат обработки команды отмены.
+      cancellationStatus равен CANCELLED при успешной отмене
+      или REJECTED, если отменить бронирование не удалось.
+      При отказе обязательно указывается rejectionReason.
 components:
   messages:
     BookTransfer:
       name: BookTransfer
-      title: Команда на бронирование трансфера
+      title: Команда бронирования трансфера
+      contentType: application/json
       payload:
         type: object
-        description: Данные для создания бронирования трансфера.
         required:
           - compositeBookingId
-          - tariffName
-          - startLatitude
-          - startLongitude
-          - endLatitude
-          - endLongitude
+          - tariff_id
           - start_datetime
+          - start_latitude
+          - start_longitude
+          - end_latitude
+          - end_longitude
         properties:
           compositeBookingId:
             type: integer
             format: int64
-            minimum: 1
-            description: |
-              Идентификатор составного бронирования,
-              созданный оркестратором.
-            example: 100001
-          tariffName:
-            type: string
-            description: Название выбранного тарифа трансфера.
-            example: VIP
-          startLatitude:
-            type: number
-            format: double
-            minimum: -90
-            maximum: 90
-            description: Широта начальной точки.
-            example: 55.7558
-          startLongitude:
-            type: number
-            format: double
-            minimum: -180
-            maximum: 180
-            description: Долгота начальной точки.
-            example: 37.6173
-          endLatitude:
-            type: number
-            format: double
-            minimum: -90
-            maximum: 90
-            description: Широта конечной точки.
-            example: 55.8
-          endLongitude:
-            type: number
-            format: double
-            minimum: -180
-            maximum: 180
-            description: Долгота конечной точки.
-            example: 37.5
+            description: 'Идентификатор общей операции, назначенный оркестратором'
+          tariff_id:
+            type: integer
+            format: int64
+            description: Идентификатор тарифа из Tariff.ID
           start_datetime:
             type: string
             format: date-time
-            description: Дата и время начала поездки.
-            example: '2026-10-30T14:30:00+03:00'
-    BookingStatusChanged:
-      name: BookingStatusChanged
-      title: Результат бронирования трансфера
+          start_latitude:
+            type: number
+            format: double
+          start_longitude:
+            type: number
+            format: double
+          end_latitude:
+            type: number
+            format: double
+          end_longitude:
+            type: number
+            format: double
+    CancelTransfer:
+      name: CancelTransfer
+      title: Команда отмены трансфера
+      contentType: application/json
       payload:
         type: object
-        description: Результат обработки команды бронирования.
         required:
           - compositeBookingId
           - bookingId
-          - tariffName
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            description: 'Идентификатор общей операции, назначенный оркестратором'
+          bookingId:
+            type: integer
+            format: int64
+            description: Внутренний идентификатор бронирования в сервисе трансферов
+    BookingStatusChanged:
+      name: BookingStatusChanged
+      title: Событие изменения статуса бронирования
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - compositeBookingId
+          - bookingId
+          - tariff_id
           - start_datetime
-          - calculatedPrice
+          - calculated_price
           - bookingStatus
         properties:
           compositeBookingId:
             type: integer
             format: int64
-            minimum: 1
-            description: |
-              Идентификатор составного бронирования,
-              полученный из исходной команды.
-            example: 100001
+            description: 'Идентификатор общей операции, возвращается без изменений'
           bookingId:
             type: integer
             format: int64
-            minimum: 1
-            description: Внутренний идентификатор бронирования трансфера.
-            example: 42
-          tariffName:
-            type: string
-            description: Название выбранного тарифа.
-            example: VIP
+            description: Внутренний идентификатор бронирования
+          tariff_id:
+            type: integer
+            format: int64
           start_datetime:
             type: string
             format: date-time
-            description: Дата и время начала поездки.
-            example: '2026-10-30T14:30:00+03:00'
-          calculatedPrice:
+          calculated_price:
             type: number
             format: double
             minimum: 0
-            description: Общая стоимость поездки.
-            example: 1263
+            description: Итоговая стоимость трансфера
           bookingStatus:
             type: string
-            description: Текущий статус бронирования.
             enum:
               - PENDING
               - CONFIRMED
               - REJECTED
-            example: CONFIRMED
+              - CANCELLED
           rejectionReason:
             type: string
-            description: 'Причина отказа, если бронирование отклонено.'
-          createdAt:
+            description: |
+              Причина отказа. Обязательна при bookingStatus = REJECTED.
+              Для CONFIRMED и CANCELLED не требуется.
+          created_at:
             type: string
             format: date-time
-            description: Дата и время создания бронирования.
-            example: '2026-10-28T10:30:00Z'
+    TransferCancellationResult:
+      name: TransferCancellationResult
+      title: Результат отмены бронирования
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - compositeBookingId
+          - bookingId
+          - cancellationStatus
+        properties:
+          compositeBookingId:
+            type: integer
+            format: int64
+            description: 'Идентификатор общей операции, возвращается без изменений'
+          bookingId:
+            type: integer
+            format: int64
+            description: Внутренний идентификатор бронирования
+          cancellationStatus:
+            type: string
+            enum:
+              - CANCELLED
+              - REJECTED
+            description: Результат обработки команды отмены
+          rejectionReason:
+            type: string
+            description: Обязательна при cancellationStatus = REJECTED
