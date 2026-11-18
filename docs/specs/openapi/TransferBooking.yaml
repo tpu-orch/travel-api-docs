@@ -10,7 +10,7 @@ info:
 
 servers:
   - url: http://62.76.239.68:8000
-    description: Потом заменить на реальный адрес
+    description: Теперь реальный IP и порт сервиса
 
 tags:
   - name: Transfers
