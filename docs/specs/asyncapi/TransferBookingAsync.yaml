@@ -14,9 +14,9 @@ info:
     с исходным составным бронированием.
 servers:
   kafka:
-    host: 'localhost:9092'
+    host: http://45.89.229.4:9092
     protocol: kafka
-    description: Заменить потом на реальный
+    description: "Kafka-брокер"
 channels:
   transfer.booking:
     address: transfer.booking
