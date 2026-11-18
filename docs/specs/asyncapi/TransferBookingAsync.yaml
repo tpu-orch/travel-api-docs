@@ -8,9 +8,9 @@ info:
     а также публикует результаты обработки этих команд.
 servers:
   kafka:
-    host: 'localhost:9092'
+    host: http://45.89.229.4:9092
     protocol: kafka
-    description: Потом заменим на реальный адрес
+    description: "Kafka-брокер"
 channels:
   transferBooking:
     address: transfer.booking
