@@ -8,7 +8,7 @@ info:
     а также публикует результаты обработки этих команд.
 servers:
   kafka:
-    host: http://45.89.229.4:9092
+    host: 45.89.229.4:9092
     protocol: kafka
     description: "Kafka-брокер"
 channels:
