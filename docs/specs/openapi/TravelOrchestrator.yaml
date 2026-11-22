@@ -3,22 +3,16 @@ info:
   title: Сервис оркестрации путешествий
   version: 0.1.0
   description: |
-    REST API для запуска составного бронирования и получения его состояния.
+    Внутренний REST API для взаимодействия контроллера путешествий с оркестратором.
 
     Бронирование и компенсация выполняются асинхронно через Kafka.
     Оркестратор запускает шаги последовательно. При ошибке он прекращает
     оставшиеся шаги и отменяет уже подтверждённые бронирования в обратном
-    порядке. REST API предполагается доступным через API gateway, который
-    проверяет JWT и передаёт сервису идентификатор аутентифицированного
-    пользователя.
+    порядке.
 
-    Статусы шагов являются нормализованными статусами оркестратора. Текущие
-    AsyncAPI-контракты авиабилетов и отелей не описывают явный отказ бронирования;
-    для надёжной компенсации эти события нужно дополнить статусом REJECTED.
+    Пользовательский запрос проходит через API gateway и контроллер путешествий;
+    именно контроллер вызывает этот API.
 
-servers:
-  - url: /api/orchestrator/v1
-    description: Путь API через gateway (пример)
 
 tags:
   - name: Составные бронирования
@@ -38,8 +32,6 @@ paths:
         при сетевых повторах того же запроса. Тот же ключ с другим телом
         запроса возвращает 409 Conflict.
       operationId: createCompositeBooking
-      security:
-        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -75,8 +67,6 @@ paths:
                 $ref: '#/components/schemas/CompositeBooking'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '409':
           description: Ключ идемпотентности уже использован с другим запросом
           content:
@@ -92,8 +82,6 @@ paths:
       summary: Получить состояние составного бронирования
       description: Возвращает общий статус и состояние каждого шага оркестрации.
       operationId: getCompositeBooking
-      security:
-        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CompositeBookingId'
       responses:
@@ -103,10 +91,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CompositeBooking'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Пользователь не является владельцем бронирования
         '404':
           description: Составное бронирование не найдено
           content:
@@ -123,8 +107,6 @@ paths:
         Оркестратор отменяет компоненты в обратном порядке и обновляет состояние,
         которое доступно через GET /composite-bookings/{id}.
       operationId: cancelCompositeBooking
-      security:
-        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CompositeBookingId'
       responses:
@@ -134,10 +116,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CompositeBooking'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Пользователь не является владельцем бронирования
         '404':
           description: Составное бронирование не найдено
           content:
@@ -152,12 +130,6 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -182,12 +154,6 @@ components:
   responses:
     BadRequest:
       description: Некорректный запрос или пустой состав бронирования
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Unauthorized:
-      description: Отсутствует или недействителен JWT
       content:
         application/json:
           schema:
