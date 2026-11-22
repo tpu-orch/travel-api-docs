@@ -1,0 +1,347 @@
+openapi: 3.0.3
+info:
+  title: Сервис оркестрации путешествий
+  version: 0.1.0
+  description: |
+    REST API для запуска составного бронирования и получения его состояния.
+
+    Бронирование и компенсация выполняются асинхронно через Kafka.
+    Оркестратор запускает шаги последовательно. При ошибке он прекращает
+    оставшиеся шаги и отменяет уже подтверждённые бронирования в обратном
+    порядке. REST API предполагается доступным через API gateway, который
+    проверяет JWT и передаёт сервису идентификатор аутентифицированного
+    пользователя.
+
+    Статусы шагов являются нормализованными статусами оркестратора. Текущие
+    AsyncAPI-контракты авиабилетов и отелей не описывают явный отказ бронирования;
+    для надёжной компенсации эти события нужно дополнить статусом REJECTED.
+
+servers:
+  - url: /api/orchestrator/v1
+    description: Путь API через gateway (пример)
+
+tags:
+  - name: Составные бронирования
+    description: Создание, просмотр и отмена составного бронирования
+
+paths:
+  /composite-bookings:
+    post:
+      tags: [Составные бронирования]
+      summary: Запустить составное бронирование
+      description: |
+        Принимает выбранные компоненты путешествия и начинает последовательную
+        оркестрацию. Результат приходит асинхронно через Kafka, поэтому запрос
+        возвращает 202 Accepted и идентификатор для проверки состояния.
+
+        Idempotency-Key создаёт вызывающий контроллер и повторно использует
+        при сетевых повторах того же запроса. Тот же ключ с другим телом
+        запроса возвращает 409 Conflict.
+      operationId: createCompositeBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompositeBookingRequest'
+            example:
+              ticketId: 12345
+              hotel:
+                roomId: 201829
+                arrivalDate: '2026-12-10T14:00:00Z'
+                departureDate: '2026-12-13T12:00:00Z'
+              transfer:
+                tariff_id: 1
+                start_datetime: '2026-12-10T12:00:00Z'
+                start_latitude: 55.7558
+                start_longitude: 37.6173
+                end_latitude: 56.4846
+                end_longitude: 84.9476
+      responses:
+        '202':
+          description: Оркестрация принята или найден результат предыдущего запроса с тем же ключом
+          headers:
+            Location:
+              description: URL состояния составного бронирования
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompositeBooking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Ключ идемпотентности уже использован с другим запросом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/DependencyUnavailable'
+
+  /composite-bookings/{id}:
+    get:
+      tags: [Составные бронирования]
+      summary: Получить состояние составного бронирования
+      description: Возвращает общий статус и состояние каждого шага оркестрации.
+      operationId: getCompositeBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CompositeBookingId'
+      responses:
+        '200':
+          description: Состояние найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompositeBooking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Пользователь не является владельцем бронирования
+        '404':
+          description: Составное бронирование не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /composite-bookings/{id}/cancellation:
+    post:
+      tags: [Составные бронирования]
+      summary: Запустить отмену составного бронирования
+      description: |
+        Запускает асинхронную отмену завершённого составного бронирования.
+        Оркестратор отменяет компоненты в обратном порядке и обновляет состояние,
+        которое доступно через GET /composite-bookings/{id}.
+      operationId: cancelCompositeBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CompositeBookingId'
+      responses:
+        '202':
+          description: Отмена принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompositeBooking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Пользователь не является владельцем бронирования
+        '404':
+          description: Составное бронирование не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Текущее состояние не допускает отмену
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID, созданный контроллером путешествий и сохраняемый при повторах запроса
+      schema:
+        type: string
+        format: uuid
+      example: 3f65d7ad-6d3b-4fa1-93b1-f09e1c7d80c3
+    CompositeBookingId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор compositeBookingId, передаваемый также в Kafka
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 100001
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос или пустой состав бронирования
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Отсутствует или недействителен JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    DependencyUnavailable:
+      description: Оркестратор временно не может принять команду
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    CompositeBookingRequest:
+      type: object
+      description: Выбранные компоненты путешествия; должен быть указан хотя бы один
+      properties:
+        ticketId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: ID выбранного авиабилета
+          example: 12345
+        hotel:
+          $ref: '#/components/schemas/HotelSelection'
+        transfer:
+          $ref: '#/components/schemas/TransferSelection'
+      anyOf:
+        - required: [ticketId]
+        - required: [hotel]
+        - required: [transfer]
+
+    HotelSelection:
+      type: object
+      required: [roomId, arrivalDate, departureDate]
+      properties:
+        roomId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: ID номера в сервисе отелей
+          example: 201829
+        arrivalDate:
+          type: string
+          format: date-time
+        departureDate:
+          type: string
+          format: date-time
+          description: Должна быть позже arrivalDate
+
+    TransferSelection:
+      type: object
+      required:
+        - tariff_id
+        - start_datetime
+        - start_latitude
+        - start_longitude
+        - end_latitude
+        - end_longitude
+      properties:
+        tariff_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: ID тарифа в сервисе трансферов
+        start_datetime:
+          type: string
+          format: date-time
+        start_latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        start_longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        end_latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        end_longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    CompositeBooking:
+      type: object
+      required: [id, status, createdAt, updatedAt, steps]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: compositeBookingId для корреляции с Kafka-событиями
+          example: 100001
+        status:
+          $ref: '#/components/schemas/CompositeBookingStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingStep'
+
+    CompositeBookingStatus:
+      type: string
+      description: Общий статус оркестрации
+      enum:
+        - IN_PROGRESS
+        - COMPENSATING
+        - COMPLETED
+        - FAILED
+        - PARTIALLY_COMPENSATED
+        - CANCELLATION_IN_PROGRESS
+        - CANCELLED
+
+    BookingStep:
+      type: object
+      required: [service, status]
+      properties:
+        service:
+          type: string
+          enum: [ticket, hotel, transfer]
+        status:
+          type: string
+          enum:
+            - NOT_STARTED
+            - IN_PROGRESS
+            - RESERVED
+            - REJECTED
+            - FAILED
+            - CANCELLATION_IN_PROGRESS
+            - CANCELLED
+            - CANCELLATION_FAILED
+        serviceBookingId:
+          type: integer
+          format: int64
+          description: Внутренний ID бронирования, если он возвращён сервисом
+        error:
+          $ref: '#/components/schemas/Error'
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: BOOKING_REJECTED
+        message:
+          type: string
+          example: Сервис отелей отклонил бронирование номера
