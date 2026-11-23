@@ -17,6 +17,12 @@ const documents = {
     label: 'Transfer OpenAPI',
     url: 'specs/openapi/TransferBooking.yaml'
   },
+  'orchestrator-openapi': {
+    type: 'openapi',
+    title: 'Travel Orchestrator API',
+    label: 'Orchestrator OpenAPI',
+    url: 'specs/openapi/TravelOrchestrator.yaml'
+  },
   'tickets-asyncapi': {
     type: 'asyncapi',
     title: 'Tickets API - события',
